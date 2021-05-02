@@ -2,6 +2,11 @@ import { compose } from "throwback";
 import { post } from "@borderless/fetch-router";
 import { App } from "@octokit/app";
 import { Octokit } from "@octokit/core";
+import {
+  WebhookEvent,
+  WebhookEventMap,
+  WebhookEventName,
+} from "@octokit/webhooks-types";
 import { background, withValue, Context } from "@borderless/context";
 import * as zod from "zod";
 
@@ -73,6 +78,92 @@ const app = new App({
   },
 });
 
+/**
+ * Handle commit comments to automatically deploy.
+ */
+async function handleCommitComment(
+  context: AppContext,
+  event: WebhookEventMap["commit_comment"]
+) {
+  const [owner, repo] = event.repository.full_name.split("/");
+  const sha = event.comment.commit_id;
+  const body = event.comment.body;
+  const firstLine = body.split(/\r?\n/, 1)[0].trim();
+  if (!firstLine.startsWith("/deploy ")) return;
+
+  const environment = firstLine.slice(8);
+  if (environment.includes(" ")) return;
+
+  await triggerDeployment(context, { owner, repo, sha, environment });
+
+  // React to show that the app saw the command.
+  if (event.installation) {
+    const kit = await app.getInstallationOctokit(event.installation.id);
+
+    await kit.request(
+      "POST /repos/{owner}/{repo}/comments/{comment_id}/reactions",
+      {
+        owner,
+        repo,
+        comment_id: event.comment.id,
+        content: "rocket",
+        mediaType: {
+          previews: ["squirrel-girl"],
+        },
+      }
+    );
+  }
+}
+
+interface DeploymentOptions {
+  owner: string;
+  repo: string;
+  sha: string;
+  environment: string;
+}
+
+/**
+ * Trigger a deployment.
+ */
+async function triggerDeployment(
+  context: AppContext,
+  options: DeploymentOptions
+) {
+  // Get the installation kit to trigger a deployment.
+  const installation = await app.octokit.request(
+    "GET /repos/{owner}/{repo}/installation",
+    {
+      owner: options.owner,
+      repo: options.repo,
+    }
+  );
+
+  context.value("logger")(`Github deploy installation`, {
+    installation,
+  });
+
+  const kit = await app.getInstallationOctokit(installation.data.id);
+
+  // Trigger deployment as the GitHub App.
+  const deployment = await kit.request(
+    "POST /repos/{owner}/{repo}/deployments",
+    {
+      owner: options.owner,
+      repo: options.repo,
+      environment: options.environment,
+      ref: options.sha,
+      required_contexts: [],
+      mediaType: {
+        previews: ["flash-preview", "ant-man-preview"],
+      },
+    }
+  );
+
+  context.value("logger")(`Github repo deployment`, {
+    deployment,
+  });
+}
+
 const deploySchema = zod.object({
   repository: zod.string(),
   ref: zod.string(),
@@ -97,7 +188,8 @@ const router = compose([
         return new Response(null, { status: 401 });
       }
 
-      const body = JSON.parse(payload);
+      const event = eventName as WebhookEventName;
+      const body = JSON.parse(payload) as WebhookEvent;
 
       req[CONTEXT_KEY].value("logger")(
         `Github webhook event: ${eventName} | ${deliveryId}`,
@@ -106,11 +198,12 @@ const router = compose([
         }
       );
 
-      await app.webhooks.receive({
-        id: deliveryId,
-        name: eventName as any,
-        payload: body,
-      });
+      if (event === "commit_comment") {
+        await handleCommitComment(
+          req[CONTEXT_KEY],
+          body as WebhookEventMap["commit_comment"]
+        );
+      }
 
       return new Response(null, { status: 200 });
     }
@@ -135,38 +228,11 @@ const router = compose([
       commit,
     });
 
-    // Get the installation kit to trigger a deployment.
-    const installation = await app.octokit.request(
-      "GET /repos/{owner}/{repo}/installation",
-      {
-        owner,
-        repo,
-      }
-    );
-
-    req[CONTEXT_KEY].value("logger")(`Github deploy installation`, {
-      installation,
-    });
-
-    const kit = await app.getInstallationOctokit(installation.data.id);
-
-    // Trigger deployment as the GitHub App.
-    const deployment = await kit.request(
-      "POST /repos/{owner}/{repo}/deployments",
-      {
-        owner,
-        repo,
-        environment,
-        ref: commit.data.sha,
-        required_contexts: [],
-        mediaType: {
-          previews: ["flash-preview", "ant-man-preview"],
-        },
-      }
-    );
-
-    req[CONTEXT_KEY].value("logger")(`Github repo deployment`, {
-      deployment,
+    await triggerDeployment(req[CONTEXT_KEY], {
+      owner,
+      repo,
+      environment,
+      sha: commit.data.sha,
     });
 
     return new Response(null, { status: 201 });
