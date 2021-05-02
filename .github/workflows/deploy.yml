@@ -1,0 +1,69 @@
+on: deployment
+name: Deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: borderlesslabs
+      SENTRY_PROJECT: timely-deploy
+    steps:
+      - uses: actions/checkout@v2
+      - name: Start deployment
+        uses: chrnorm/deployment-status@releases/v1
+        with:
+          token: ${{ github.token }}
+          state: "in_progress"
+          deployment_id: ${{ github.event.deployment.id }}
+      - name: Set up environment
+        run: |
+          echo "WORKSPACE=${{ github.event.deployment.environment }}" >> $GITHUB_ENV
+          echo "API_HOSTNAME=deploy-api-${{ github.event.deployment.environment }}.timely.dev" >> $GITHUB_ENV
+      - name: Set up production
+        if: ${{ env.WORKSPACE == 'production' }}
+        run: |
+          echo "API_HOSTNAME=deploy-api.timely.dev" >> $GITHUB_ENV
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.x"
+      - name: Install
+        run: make -j install
+        env:
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
+      - name: Build
+        run: make -j build
+      - name: Install Terraform
+        env:
+          TERRAFORM_VERSION: 0.15.1
+        run: |
+          curl -s -S -L -o /tmp/terraform_${TERRAFORM_VERSION} https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+          sudo unzip -o -d /usr/local/bin /tmp/terraform_${TERRAFORM_VERSION}
+      - name: Deploy
+        env:
+          API_HOSTNAME: ${{ env.API_HOSTNAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: cd4fb2c50dd11c531323586833df5eeb
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE: 9f42b35fe70e1e2939849ad2e563627a
+          GITHUB_APP_ID: ${{ secrets.GH_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.GH_WEBHOOK_SECRET }}
+          LOGFLARE_API_KEY: ${{ secrets.LOGFLARE_API_KEY }}
+          RELEASE_VERSION: ${{ github.sha }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: make -j deploy
+      - name: Mark deployment as success
+        if: success()
+        uses: chrnorm/deployment-status@releases/v1
+        with:
+          token: ${{ github.token }}
+          state: "success"
+          deployment_id: ${{ github.event.deployment.id }}
+      - name: Mark deployment as failure
+        if: failure()
+        uses: chrnorm/deployment-status@releases/v1
+        with:
+          token: ${{ github.token }}
+          state: "failure"
+          deployment_id: ${{ github.event.deployment.id }}

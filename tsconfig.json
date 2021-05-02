@@ -1,0 +1,14 @@
+{
+  "extends": "@borderless/ts-scripts/configs/tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "resolveJsonModule": true,
+    "module": "CommonJS",
+    "types": ["node", "jest"],
+    "baseUrl": "./packages",
+    "paths": {
+      "@app/*": ["./*/src/index.ts"]
+    }
+  },
+  "include": []
+}

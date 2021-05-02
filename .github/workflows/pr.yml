@@ -1,0 +1,24 @@
+on:
+  pull_request:
+    types: [opened, synchronize]
+name: Check
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Filter packages
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          echo "PACKAGES=$(echo $(PACKAGES=$(echo $(git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} | grep -e 'packages/[^/]\+' | cut -d/ -f1-2 | sort -u)) make affected))" >> $GITHUB_ENV
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.x"
+      - name: Install
+        run: make -j install
+        env:
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
+      - name: Build
+        run: make -j build
+      - name: Test
+        run: make -j test

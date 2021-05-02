@@ -1,0 +1,12 @@
+.vscode
+.DS_Store
+coverage/
+node_modules/
+npm-debug.log
+dist/
+bundle/
+*.tsbuildinfo
+.envrc
+.terraform/
+terraform.tfvars
+terraform.tfplan

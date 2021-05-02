@@ -1,0 +1,27 @@
+on:
+  push:
+    branches: [main]
+name: Check
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Filter packages
+        if: ${{ !github.event.forced && !github.event.created && !github.event.deleted }}
+        run: |
+          git fetch origin ${{ github.event.before }}
+          echo "PACKAGES=$(echo $(PACKAGES=$(echo $(git diff --diff-filter=ACMR --name-only ${{ github.event.before }} ${{ github.sha }} | grep -e 'packages/[^/]\+' | cut -d/ -f1-2 | sort -u)) make affected))" >> $GITHUB_ENV
+      - uses: actions/setup-node@v2
+        with:
+          node-version: "14.x"
+      - name: Install
+        run: make -j install
+        env:
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: true
+      - name: Build
+        run: make -j build
+      - name: Test
+        run: make -j test
+      - name: Deploy to staging
+        run: curl https://deploy-api.timely.dev/api/github/deploy -d '{"repository":"${{ github.repository }}","ref":"${{ github.sha }}","environment":"staging","token":"${{ github.token }}"}'
