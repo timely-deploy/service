@@ -1,7 +1,7 @@
 on:
   pull_request:
     types: [opened, synchronize]
-name: Check
+name: Pull Request Test
 jobs:
   check:
     runs-on: ubuntu-latest
