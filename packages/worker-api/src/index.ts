@@ -18,11 +18,25 @@ declare const LOGFLARE_API_KEY: string;
 const DEPLOY_PREFIX = "@timely-deploy ";
 
 /**
- * The comment webhook contains the association: https://docs.github.com/en/graphql/reference/enums#commentauthorassociation
+ * The comment webhook contains the association.
+ *
+ * Docs: https://docs.github.com/en/graphql/reference/enums#commentauthorassociation
  *
  * TODO(blakeembrey): Make configurable when "workflows" are supported.
  */
-const VALID_USER_ASSOCIATION = new Set(["COLLABORATOR", "OWNER", "MEMBER"]);
+const VALID_USER_ASSOCIATION = new Set([
+  "COLLABORATOR",
+  "CONTRIBUTOR",
+  "MEMBER",
+  "OWNER",
+]);
+
+/**
+ * When responding to a request from a user, check the user has write access to the repo.
+ *
+ * Docs: https://docs.github.com/en/rest/reference/repos#get-repository-permissions-for-a-user
+ */
+const VALID_USER_PERMISSION = new Set(["admin", "write"]);
 
 interface LoggerOptions {
   apiKey: string;
@@ -94,6 +108,14 @@ async function handleCommitComment(
   context: AppContext,
   event: WebhookEventMap["commit_comment"]
 ) {
+  if (!event.installation) {
+    context.value("logger")(
+      `Commit comment skipped: ${event.comment.id} | missing_installation`
+    );
+
+    return;
+  }
+
   if (!VALID_USER_ASSOCIATION.has(event.comment.author_association)) {
     context.value("logger")(
       `Commit skipped: ${event.comment.id} | invalid_user_association | ${event.comment.author_association}`
@@ -102,13 +124,14 @@ async function handleCommitComment(
     return;
   }
 
+  const username = event.comment.user.login ?? "";
   const [owner, repo] = event.repository.full_name.split("/");
   const sha = event.comment.commit_id;
   const body = event.comment.body;
   const firstLine = body.split(/\r?\n/, 1)[0].trim();
   if (!firstLine.startsWith(DEPLOY_PREFIX)) {
     context.value("logger")(
-      `Commit skipped: ${event.comment.id} | invalid_prefix | ${firstLine}`
+      `Commit comment skipped: ${event.comment.id} | invalid_prefix | ${firstLine}`
     );
 
     return;
@@ -117,7 +140,28 @@ async function handleCommitComment(
   const environment = firstLine.slice(DEPLOY_PREFIX.length);
   if (environment.includes(" ")) {
     context.value("logger")(
-      `Commit skipped: ${event.comment.id} | invalid_environment | ${environment}`
+      `Commit comment skipped: ${event.comment.id} | invalid_environment | ${environment}`
+    );
+
+    return;
+  }
+
+  // An installation access token is required for repo-based actions.
+  const installation = await app.getInstallationOctokit(event.installation.id);
+
+  // Check user permissions for the repo, should be "write".
+  const permission = await installation.request(
+    "GET /repos/{owner}/{repo}/collaborators/{username}/permission",
+    {
+      owner,
+      repo,
+      username,
+    }
+  );
+
+  if (!VALID_USER_PERMISSION.has(permission.data.permission)) {
+    context.value("logger")(
+      `Commit comment skipped: ${event.comment.id} | invalid_permission | ${permission.data.permission}`
     );
 
     return;
@@ -126,22 +170,18 @@ async function handleCommitComment(
   await triggerDeployment(context, { owner, repo, sha, environment });
 
   // React to show that the app saw the command.
-  if (event.installation) {
-    const kit = await app.getInstallationOctokit(event.installation.id);
-
-    await kit.request(
-      "POST /repos/{owner}/{repo}/comments/{comment_id}/reactions",
-      {
-        owner,
-        repo,
-        comment_id: event.comment.id,
-        content: "rocket",
-        mediaType: {
-          previews: ["squirrel-girl"],
-        },
-      }
-    );
-  }
+  await installation.request(
+    "POST /repos/{owner}/{repo}/comments/{comment_id}/reactions",
+    {
+      owner,
+      repo,
+      comment_id: event.comment.id,
+      content: "rocket",
+      mediaType: {
+        previews: ["squirrel-girl"],
+      },
+    }
+  );
 }
 
 interface DeploymentOptions {
