@@ -17,6 +17,13 @@ declare const LOGFLARE_API_KEY: string;
 
 const DEPLOY_PREFIX = "@timely-deploy ";
 
+/**
+ * The comment webhook contains the association: https://docs.github.com/en/graphql/reference/enums#commentauthorassociation
+ *
+ * TODO(blakeembrey): Make configurable when "workflows" are supported.
+ */
+const VALID_USER_ASSOCIATION = new Set(["COLLABORATOR", "OWNER", "MEMBER"]);
+
 interface LoggerOptions {
   apiKey: string;
   source: string;
@@ -87,6 +94,8 @@ async function handleCommitComment(
   context: AppContext,
   event: WebhookEventMap["commit_comment"]
 ) {
+  if (!VALID_USER_ASSOCIATION.has(event.comment.author_association)) return;
+
   const [owner, repo] = event.repository.full_name.split("/");
   const sha = event.comment.commit_id;
   const body = event.comment.body;
