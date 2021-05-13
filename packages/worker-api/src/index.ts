@@ -15,6 +15,8 @@ declare const GITHUB_APP_PRIVATE_KEY: string;
 declare const GITHUB_WEBHOOK_SECRET: string;
 declare const LOGFLARE_API_KEY: string;
 
+const DEPLOY_PREFIX = "@timely-deploy ";
+
 interface LoggerOptions {
   apiKey: string;
   source: string;
@@ -89,9 +91,9 @@ async function handleCommitComment(
   const sha = event.comment.commit_id;
   const body = event.comment.body;
   const firstLine = body.split(/\r?\n/, 1)[0].trim();
-  if (!firstLine.startsWith("/deploy ")) return;
+  if (!firstLine.startsWith(DEPLOY_PREFIX)) return;
 
-  const environment = firstLine.slice(8);
+  const environment = firstLine.slice(DEPLOY_PREFIX.length);
   if (environment.includes(" ")) return;
 
   await triggerDeployment(context, { owner, repo, sha, environment });
