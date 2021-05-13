@@ -94,16 +94,34 @@ async function handleCommitComment(
   context: AppContext,
   event: WebhookEventMap["commit_comment"]
 ) {
-  if (!VALID_USER_ASSOCIATION.has(event.comment.author_association)) return;
+  if (!VALID_USER_ASSOCIATION.has(event.comment.author_association)) {
+    context.value("logger")(
+      `Commit skipped: ${event.comment.id} | invalid_user_association | ${event.comment.author_association}`
+    );
+
+    return;
+  }
 
   const [owner, repo] = event.repository.full_name.split("/");
   const sha = event.comment.commit_id;
   const body = event.comment.body;
   const firstLine = body.split(/\r?\n/, 1)[0].trim();
-  if (!firstLine.startsWith(DEPLOY_PREFIX)) return;
+  if (!firstLine.startsWith(DEPLOY_PREFIX)) {
+    context.value("logger")(
+      `Commit skipped: ${event.comment.id} | invalid_prefix | ${firstLine}`
+    );
+
+    return;
+  }
 
   const environment = firstLine.slice(DEPLOY_PREFIX.length);
-  if (environment.includes(" ")) return;
+  if (environment.includes(" ")) {
+    context.value("logger")(
+      `Commit skipped: ${event.comment.id} | invalid_environment | ${environment}`
+    );
+
+    return;
+  }
 
   await triggerDeployment(context, { owner, repo, sha, environment });
 
