@@ -2,11 +2,7 @@ import { compose } from "throwback";
 import { post } from "@borderless/fetch-router";
 import { App } from "@octokit/app";
 import { Octokit } from "@octokit/core";
-import {
-  WebhookEvent,
-  WebhookEventMap,
-  WebhookEventName,
-} from "@octokit/webhooks-types";
+import { WebhookEvent } from "@octokit/webhooks-types";
 import { background, withValue, Context } from "@borderless/context";
 import * as zod from "zod";
 
@@ -14,29 +10,6 @@ declare const GITHUB_APP_ID: string;
 declare const GITHUB_APP_PRIVATE_KEY: string;
 declare const GITHUB_WEBHOOK_SECRET: string;
 declare const LOGFLARE_API_KEY: string;
-
-const DEPLOY_PREFIX = "@timely-deploy ";
-
-/**
- * The comment webhook contains the association.
- *
- * Docs: https://docs.github.com/en/graphql/reference/enums#commentauthorassociation
- *
- * TODO(blakeembrey): Make configurable when "workflows" are supported.
- */
-const VALID_USER_ASSOCIATION = new Set([
-  "COLLABORATOR",
-  "CONTRIBUTOR",
-  "MEMBER",
-  "OWNER",
-]);
-
-/**
- * When responding to a request from a user, check the user has write access to the repo.
- *
- * Docs: https://docs.github.com/en/rest/reference/repos#get-repository-permissions-for-a-user
- */
-const VALID_USER_PERMISSION = new Set(["admin", "write"]);
 
 interface LoggerOptions {
   apiKey: string;
@@ -100,89 +73,6 @@ const app = new App({
     secret: GITHUB_WEBHOOK_SECRET,
   },
 });
-
-/**
- * Handle commit comments to automatically deploy.
- */
-async function handleCommitComment(
-  context: AppContext,
-  event: WebhookEventMap["commit_comment"]
-) {
-  if (!event.installation) {
-    context.value("logger")(
-      `Commit comment skipped: ${event.comment.id} | missing_installation`
-    );
-
-    return;
-  }
-
-  if (!VALID_USER_ASSOCIATION.has(event.comment.author_association)) {
-    context.value("logger")(
-      `Commit skipped: ${event.comment.id} | invalid_user_association | ${event.comment.author_association}`
-    );
-
-    return;
-  }
-
-  const username = event.comment.user.login ?? "";
-  const [owner, repo] = event.repository.full_name.split("/");
-  const sha = event.comment.commit_id;
-  const body = event.comment.body;
-  const firstLine = body.split(/\r?\n/, 1)[0].trim();
-  if (!firstLine.startsWith(DEPLOY_PREFIX)) {
-    context.value("logger")(
-      `Commit comment skipped: ${event.comment.id} | invalid_prefix | ${firstLine}`
-    );
-
-    return;
-  }
-
-  const environment = firstLine.slice(DEPLOY_PREFIX.length);
-  if (environment.includes(" ")) {
-    context.value("logger")(
-      `Commit comment skipped: ${event.comment.id} | invalid_environment | ${environment}`
-    );
-
-    return;
-  }
-
-  // An installation access token is required for repo-based actions.
-  const installation = await app.getInstallationOctokit(event.installation.id);
-
-  // Check user permissions for the repo, should be "write".
-  const permission = await installation.request(
-    "GET /repos/{owner}/{repo}/collaborators/{username}/permission",
-    {
-      owner,
-      repo,
-      username,
-    }
-  );
-
-  if (!VALID_USER_PERMISSION.has(permission.data.permission)) {
-    context.value("logger")(
-      `Commit comment skipped: ${event.comment.id} | invalid_permission | ${permission.data.permission}`
-    );
-
-    return;
-  }
-
-  await triggerDeployment(context, { owner, repo, sha, environment });
-
-  // React to show that the app saw the command.
-  await installation.request(
-    "POST /repos/{owner}/{repo}/comments/{comment_id}/reactions",
-    {
-      owner,
-      repo,
-      comment_id: event.comment.id,
-      content: "rocket",
-      mediaType: {
-        previews: ["squirrel-girl"],
-      },
-    }
-  );
-}
 
 interface DeploymentOptions {
   owner: string;
@@ -257,7 +147,6 @@ const router = compose([
         return new Response(null, { status: 401 });
       }
 
-      const event = eventName as WebhookEventName;
       const body = JSON.parse(payload) as WebhookEvent;
 
       req[CONTEXT_KEY].value("logger")(
@@ -266,13 +155,6 @@ const router = compose([
           body,
         }
       );
-
-      if (event === "commit_comment") {
-        await handleCommitComment(
-          req[CONTEXT_KEY],
-          body as WebhookEventMap["commit_comment"]
-        );
-      }
 
       return new Response(null, { status: 200 });
     }
