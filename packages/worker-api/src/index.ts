@@ -159,7 +159,7 @@ const router = compose([
       return new Response(null, { status: 200 });
     }
   ),
-  post("/api/github/deploy", async (req: RequestContext) => {
+  post("/github/deploy", async (req: RequestContext) => {
     const body = await req.json();
     const { repository, ref, environment, token } = deploySchema.parse(body);
     const [owner, repo] = repository.split("/");

@@ -24,4 +24,4 @@ jobs:
       - name: Test
         run: make -j test
       - name: Deploy to staging
-        run: curl https://deploy-api.timely.dev/api/github/deploy -d '{"repository":"${{ github.repository }}","ref":"${{ github.sha }}","environment":"staging","token":"${{ github.token }}"}'
+        run: curl https://deploy-api.timely.dev/github/deploy -d '{"repository":"${{ github.repository }}","ref":"${{ github.sha }}","environment":"staging","token":"${{ github.token }}"}'
