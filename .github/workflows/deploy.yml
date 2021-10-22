@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Start deployment
-        uses: chrnorm/deployment-status@releases/v1
+        uses: timely-deploy/status-action@v1
         with:
           token: ${{ github.token }}
           state: "in_progress"
@@ -55,14 +55,14 @@ jobs:
         run: make -j deploy
       - name: Mark deployment as success
         if: success()
-        uses: chrnorm/deployment-status@releases/v1
+        uses: timely-deploy/status-action@v1
         with:
           token: ${{ github.token }}
           state: "success"
           deployment_id: ${{ github.event.deployment.id }}
       - name: Mark deployment as failure
         if: failure()
-        uses: chrnorm/deployment-status@releases/v1
+        uses: timely-deploy/status-action@v1
         with:
           token: ${{ github.token }}
           state: "failure"
