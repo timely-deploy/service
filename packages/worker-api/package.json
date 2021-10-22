@@ -11,10 +11,10 @@
     "@octokit/core": "^3.4.0",
     "@octokit/webhooks": "^9.3.0",
     "throwback": "^4.1.0",
-    "zod": "^1.11.16"
+    "zod": "^3.10.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^2.0.0"
+    "@cloudflare/workers-types": "^3.0.0"
   },
   "types": "dist/index.d.ts"
 }

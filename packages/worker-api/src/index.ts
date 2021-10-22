@@ -31,19 +31,19 @@ function createLogger(event: FetchEvent, { apiKey, source }: LoggerOptions) {
           log_entry: message,
           metadata: metadata,
         }),
-      })
+      }).then(() => undefined)
     );
   };
 }
 
-type AppContext = Context<{
+interface ContextValue {
   logger: (message: string, metadata?: Record<string, unknown>) => void;
-}>;
+}
 
 const CONTEXT_KEY = Symbol("context");
 
 interface RequestContext extends Request {
-  [CONTEXT_KEY]: AppContext;
+  [CONTEXT_KEY]: Context<ContextValue>;
 }
 
 async function handler(event: FetchEvent): Promise<Response> {
@@ -62,7 +62,7 @@ async function handler(event: FetchEvent): Promise<Response> {
 
     return res;
   } catch (err) {
-    return new Response(err.stack, { status: 500 });
+    return new Response(null, { status: 500 });
   }
 }
 
@@ -85,7 +85,7 @@ interface DeploymentOptions {
  * Trigger a deployment.
  */
 async function triggerDeployment(
-  context: AppContext,
+  context: Context<ContextValue>,
   options: DeploymentOptions
 ) {
   // Get the installation kit to trigger a deployment.
