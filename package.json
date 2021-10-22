@@ -3,7 +3,7 @@
   "private": true,
   "devDependencies": {
     "@borderless/cfb": "^1.2.1",
-    "@borderless/ts-scripts": "^0.5.0",
+    "@borderless/ts-scripts": "^0.6.1",
     "@sentry/cli": "^1.64.1",
     "@types/jest": "^27.0.2",
     "@types/node": "^16.11.2",

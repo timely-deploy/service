@@ -131,34 +131,31 @@ const deploySchema = zod.object({
 });
 
 const router = compose([
-  post(
-    "/_/github/webhook",
-    async (req: RequestContext): Promise<Response> => {
-      const eventName = req.headers.get("x-github-event") ?? "";
-      const deliveryId = req.headers.get("x-github-delivery") ?? "";
-      const signatureSha256 = req.headers.get("x-hub-signature-256") ?? "";
-      const payload = await req.text();
+  post("/_/github/webhook", async (req: RequestContext): Promise<Response> => {
+    const eventName = req.headers.get("x-github-event") ?? "";
+    const deliveryId = req.headers.get("x-github-delivery") ?? "";
+    const signatureSha256 = req.headers.get("x-hub-signature-256") ?? "";
+    const payload = await req.text();
 
-      const verify = await app.webhooks.verify(
-        payload,
-        signatureSha256.replace(/^sha256=/, "")
-      );
-      if (!verify) {
-        return new Response(null, { status: 401 });
-      }
-
-      const body = JSON.parse(payload) as WebhookEvent;
-
-      req[CONTEXT_KEY].value("logger")(
-        `Github webhook event: ${eventName} | ${deliveryId}`,
-        {
-          body,
-        }
-      );
-
-      return new Response(null, { status: 200 });
+    const verify = await app.webhooks.verify(
+      payload,
+      signatureSha256.replace(/^sha256=/, "")
+    );
+    if (!verify) {
+      return new Response(null, { status: 401 });
     }
-  ),
+
+    const body = JSON.parse(payload) as WebhookEvent;
+
+    req[CONTEXT_KEY].value("logger")(
+      `Github webhook event: ${eventName} | ${deliveryId}`,
+      {
+        body,
+      }
+    );
+
+    return new Response(null, { status: 200 });
+  }),
   post("/github/deploy", async (req: RequestContext) => {
     const body = await req.json();
     const { repository, ref, environment, token } = deploySchema.parse(body);
